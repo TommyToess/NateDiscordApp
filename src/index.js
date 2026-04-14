@@ -675,34 +675,38 @@ function buildEditCheckinModal(entry) {
 }
 
 function buildSalesSubmissionEmbed(entry) {
+  const notes = entry.notes?.trim() || "None";
+
   return new EmbedBuilder()
     .setTitle("New Sales Submission")
     .setColor(0x2e8b57)
+    .setDescription(`**AP:** ${formatCurrency(entry.ap)}`)
     .addFields(
-      { name: "Agent Name", value: entry.agentName, inline: true },
+      { name: "Agent", value: entry.agentName, inline: true },
+      { name: "Submitted By", value: `<@${entry.submittedBy}>`, inline: true },
       { name: "Company", value: entry.company, inline: true },
       { name: "Product", value: entry.product, inline: true },
-      { name: "AP", value: formatCurrency(entry.ap), inline: true },
-      { name: "Submitted By", value: `<@${entry.submittedBy}>`, inline: true },
-      { name: "Notes", value: entry.notes || "None" }
+      { name: "Notes", value: notes, inline: false }
     )
-    .setFooter({ text: `Submission ID: ${entry.id}` })
+    .setFooter({ text: `Sales ID: ${entry.id}` })
     .setTimestamp(new Date(entry.createdAt));
 }
 
 function buildCheckInSubmissionEmbed(entry) {
+  const notes = entry.notes?.trim() || "None";
+
   return new EmbedBuilder()
     .setTitle("New Daily Check-In")
     .setColor(0x1e90ff)
     .addFields(
-      { name: "Agent Name", value: entry.agentName, inline: true },
+      { name: "Agent", value: entry.agentName, inline: true },
+      { name: "Submitted By", value: `<@${entry.submittedBy}>`, inline: true },
       { name: "Calls Made", value: String(entry.callsMade), inline: true },
       { name: "Appointments Made", value: String(entry.appointmentsMade), inline: true },
       { name: "Policies Closed", value: String(entry.policiesClosed), inline: true },
-      { name: "Submitted By", value: `<@${entry.submittedBy}>`, inline: true },
-      { name: "Notes", value: entry.notes || "None" }
+      { name: "Notes", value: notes, inline: false }
     )
-    .setFooter({ text: `Submission ID: ${entry.id}` })
+    .setFooter({ text: `Check-In ID: ${entry.id}` })
     .setTimestamp(new Date(entry.createdAt));
 }
 
