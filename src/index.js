@@ -676,17 +676,21 @@ function buildEditCheckinModal(entry) {
 
 function buildSalesSubmissionEmbed(entry) {
   const notes = entry.notes?.trim() || "None";
+  const salesDetails = [
+    `**Agent:** ${entry.agentName}`,
+    `**Company:** ${entry.company}`,
+    `**Product:** ${entry.product}`,
+  ].join("\n");
 
   return new EmbedBuilder()
-    .setTitle("New Sales Submission")
+    .setTitle("Sales Submission Recorded")
     .setColor(0x2e8b57)
-    .setDescription(`**AP:** ${formatCurrency(entry.ap)}`)
+    .setDescription("A new sales entry was added.")
     .addFields(
-      { name: "Agent", value: entry.agentName, inline: true },
-      { name: "Submitted By", value: `<@${entry.submittedBy}>`, inline: true },
-      { name: "Company", value: entry.company, inline: true },
-      { name: "Product", value: entry.product, inline: true },
-      { name: "Notes", value: notes, inline: false }
+      { name: "Sales Details", value: salesDetails, inline: false },
+      { name: "Performance", value: `**AP:** ${formatCurrency(entry.ap)}`, inline: false },
+      { name: "Notes", value: notes, inline: false },
+      { name: "Audit", value: `**Submitted By:** <@${entry.submittedBy}>`, inline: false }
     )
     .setFooter({ text: `Sales ID: ${entry.id}` })
     .setTimestamp(new Date(entry.createdAt));
@@ -694,17 +698,21 @@ function buildSalesSubmissionEmbed(entry) {
 
 function buildCheckInSubmissionEmbed(entry) {
   const notes = entry.notes?.trim() || "None";
+  const activity = [
+    `**Calls Made:** ${entry.callsMade}`,
+    `**Appointments Made:** ${entry.appointmentsMade}`,
+    `**Policies Closed:** ${entry.policiesClosed}`,
+  ].join("\n");
 
   return new EmbedBuilder()
-    .setTitle("New Daily Check-In")
+    .setTitle("Daily Check-In Recorded")
     .setColor(0x1e90ff)
+    .setDescription("A new daily check-in entry was added.")
     .addFields(
-      { name: "Agent", value: entry.agentName, inline: true },
-      { name: "Submitted By", value: `<@${entry.submittedBy}>`, inline: true },
-      { name: "Calls Made", value: String(entry.callsMade), inline: true },
-      { name: "Appointments Made", value: String(entry.appointmentsMade), inline: true },
-      { name: "Policies Closed", value: String(entry.policiesClosed), inline: true },
-      { name: "Notes", value: notes, inline: false }
+      { name: "Agent", value: entry.agentName, inline: false },
+      { name: "Activity", value: activity, inline: false },
+      { name: "Notes", value: notes, inline: false },
+      { name: "Audit", value: `**Submitted By:** <@${entry.submittedBy}>`, inline: false }
     )
     .setFooter({ text: `Check-In ID: ${entry.id}` })
     .setTimestamp(new Date(entry.createdAt));
