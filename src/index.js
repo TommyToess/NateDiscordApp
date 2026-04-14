@@ -10,6 +10,7 @@ const {
   Events,
   GatewayIntentBits,
   ModalBuilder,
+  MessageFlags,
   PermissionFlagsBits,
   REST,
   Routes,
@@ -44,9 +45,21 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
-const dataFile = path.join(__dirname, "..", "data", "submissions.json");
-const leaderboardStateFile = path.join(__dirname, "..", "data", "leaderboard-state.json");
-const submissionStateFile = path.join(__dirname, "..", "data", "submission-channel-state.json");
+const dataDir = path.join(__dirname, "..", "data");
+const dataFile = path.join(dataDir, "submissions.json");
+const leaderboardStateFile = path.join(dataDir, "leaderboard-state.json");
+const submissionStateFile = path.join(dataDir, "submission-channel-state.json");
+
+function ensureDataDir() {
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+}
+
+function writeJsonFile(filePath, data) {
+  ensureDataDir();
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+}
 
 function loadSubmissions() {
   if (!fs.existsSync(dataFile)) {
@@ -64,7 +77,7 @@ function loadSubmissions() {
 }
 
 function saveSubmissions(submissions) {
-  fs.writeFileSync(dataFile, JSON.stringify(submissions, null, 2));
+  writeJsonFile(dataFile, submissions);
 }
 
 function loadLeaderboardState() {
@@ -92,7 +105,7 @@ function loadLeaderboardState() {
 }
 
 function saveLeaderboardState(state) {
-  fs.writeFileSync(leaderboardStateFile, JSON.stringify(state, null, 2));
+  writeJsonFile(leaderboardStateFile, state);
 }
 
 function loadSubmissionChannelState() {
@@ -114,7 +127,7 @@ function loadSubmissionChannelState() {
 }
 
 function saveSubmissionChannelState(state) {
-  fs.writeFileSync(submissionStateFile, JSON.stringify(state, null, 2));
+  writeJsonFile(submissionStateFile, state);
 }
 
 function isSameLocalDay(a, b) {
@@ -405,7 +418,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (interaction.channelId !== SUBMISSION_CHANNEL_ID) {
           await interaction.reply({
             content: `Please submit in <#${SUBMISSION_CHANNEL_ID}>.`,
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
           return;
         }
@@ -470,7 +483,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (interaction.channelId !== SUBMISSION_CHANNEL_ID) {
           await interaction.reply({
             content: `Please submit in <#${SUBMISSION_CHANNEL_ID}>.`,
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
           return;
         }
@@ -536,7 +549,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await postLeaderboards(client, submissions);
         await interaction.reply({
           content: "Daily and monthly leaderboard messages updated.",
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -548,7 +561,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (summaryRows.length === 0) {
           await interaction.reply({
             content: "No sales submissions found for today.",
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
           return;
         }
@@ -576,7 +589,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         await interaction.reply({
           embeds: [summaryEmbed],
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -593,7 +606,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (!Number.isFinite(ap) || ap < 0) {
         await interaction.reply({
           content: "AP must be a non-negative number.",
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -624,7 +637,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       await interaction.reply({
         content: "Sales submission recorded and leaderboard updated.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -650,7 +663,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       ) {
         await interaction.reply({
           content: "Calls made, appointments made, and policies closed must be non-negative numbers.",
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -680,7 +693,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       await interaction.reply({
         content: "Daily check-in recorded and posted to the tracking channel.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   } catch (error) {
@@ -689,12 +702,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.deferred || interaction.replied) {
       await interaction.followUp({
         content: "Something went wrong while processing that request.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       }).catch(() => {});
     } else {
       await interaction.reply({
         content: "Something went wrong while processing that request.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       }).catch(() => {});
     }
   }
