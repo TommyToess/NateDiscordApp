@@ -493,12 +493,6 @@ const commands = [
     .setDescription("Manager: view one person's sales by period.")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
-    .addUserOption((option) =>
-      option.setName("user").setDescription("Discord user to look up")
-    )
-    .addStringOption((option) =>
-      option.setName("agent_name").setDescription("Agent name to look up")
-    )
     .addStringOption((option) =>
       option
         .setName("period")
@@ -510,6 +504,12 @@ const commands = [
           { name: "Yearly", value: "yearly" },
           { name: "All Time", value: "all_time" }
         )
+    )
+    .addUserOption((option) =>
+      option.setName("user").setDescription("Discord user to look up")
+    )
+    .addStringOption((option) =>
+      option.setName("agent_name").setDescription("Agent name to look up")
     ),
 ].map((command) => command.toJSON());
 
