@@ -27,6 +27,7 @@ const {
   SALES_LOG_CHANNEL_ID,
   CHECKIN_LOG_CHANNEL_ID,
   LEADERBOARD_CHANNEL_ID,
+  DATA_DIR,
 } = process.env;
 
 const REQUIRED_ENV = [
@@ -45,7 +46,7 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
-const dataDir = path.join(__dirname, "..", "data");
+const dataDir = DATA_DIR ? path.resolve(DATA_DIR) : path.join(__dirname, "..", "data");
 const dataFile = path.join(dataDir, "submissions.json");
 const leaderboardStateFile = path.join(dataDir, "leaderboard-state.json");
 const submissionStateFile = path.join(dataDir, "submission-channel-state.json");

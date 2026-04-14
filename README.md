@@ -65,6 +65,7 @@ Use a **Background Worker** service (not a web service) for Discord bots.
    - `DISCORD_TOKEN`
    - `CLIENT_ID`
    - `GUILD_ID`
+   - `DATA_DIR` (set to your mounted disk path, example: `/var/data/nate-bot`)
    - `SUBMISSION_CHANNEL_ID`
    - `SALES_LOG_CHANNEL_ID`
    - `CHECKIN_LOG_CHANNEL_ID`
@@ -74,3 +75,4 @@ Use a **Background Worker** service (not a web service) for Discord bots.
    - `Logged in as ...`
 
 Note: Render free web services can sleep and are not reliable for always-on Discord bots. Use a worker plan for stable uptime.
+Important: Without a persistent disk, files reset on restart/deploy. Attach a persistent disk to the worker and point `DATA_DIR` to that mount path.
