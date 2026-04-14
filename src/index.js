@@ -32,6 +32,9 @@ const {
   CHECKIN_LOG_CHANNEL_ID,
   LEADERBOARD_CHANNEL_ID,
   DATA_DIR,
+  MANAGER_ROLE_ID: MANAGER_ROLE_ID_ENV,
+  CEO_USER_ID: CEO_USER_ID_ENV,
+  CEO_ROLE_ID: CEO_ROLE_ID_ENV,
 } = process.env;
 
 const REQUIRED_ENV = [
@@ -44,9 +47,9 @@ const REQUIRED_ENV = [
   "LEADERBOARD_CHANNEL_ID",
 ];
 
-const MANAGER_ROLE_ID = "1493320548535636038";
-const CEO_USER_ID = "1493320537185714359";
-const CEO_ROLE_ID = "1493320537185714359";
+const MANAGER_ROLE_ID = (MANAGER_ROLE_ID_ENV || "1493320548535636038").trim();
+const CEO_USER_ID = (CEO_USER_ID_ENV || "1493320537185714359").trim();
+const CEO_ROLE_ID = (CEO_ROLE_ID_ENV || "1493320537185714359").trim();
 
 const missing = REQUIRED_ENV.filter((name) => !process.env[name]);
 if (missing.length > 0) {
@@ -841,15 +844,15 @@ const commands = [
     .setDescription("Open the daily check-in form."),
   new SlashCommandBuilder()
     .setName("entries")
-    .setDescription("View your entries, or manager-read-only view of another user's entries.")
+    .setDescription("View your entries, or manage another user's entries (manager only).")
     .addUserOption((option) =>
-      option.setName("user").setDescription("User to view (manager read-only)")
+      option.setName("user").setDescription("User to view/manage (manager only)")
     ),
   new SlashCommandBuilder()
     .setName("entires")
     .setDescription("Alias for /entries.")
     .addUserOption((option) =>
-      option.setName("user").setDescription("User to view (manager read-only)")
+      option.setName("user").setDescription("User to view/manage (manager only)")
     ),
   new SlashCommandBuilder()
     .setName("top")
@@ -1074,7 +1077,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         if (!viewingOwn && !hasManagerAccess(interaction)) {
           await interaction.reply({
-            content: "Only managers can view another user's entries.",
+            content: "Only managers or the CEO can view another user's entries.",
             flags: MessageFlags.Ephemeral,
           });
           return;
@@ -1093,31 +1096,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
           return;
         }
 
-        if (!viewingOwn) {
-          const lines = userEntries.slice(0, 20).map((entry) => {
-            const typeLabel = (entry.formType ?? "sales") === "sales" ? "Sales" : "Check-In";
-            const createdAt = new Date(entry.createdAt);
-            const dateLabel = Number.isNaN(createdAt.getTime())
-              ? "Unknown date"
-              : createdAt.toLocaleDateString("en-US");
-            return `- ${typeLabel} | ${dateLabel} | ${buildEntrySummaryLine(entry)} | ID: ${entry.id}`;
-          });
-
-          const embed = new EmbedBuilder()
-            .setTitle(`Entries for ${targetUser.tag}`)
-            .setDescription(lines.join("\n").slice(0, 4000))
-            .setColor(0x7289da)
-            .setTimestamp();
-
-          await interaction.reply({
-            embeds: [embed],
-            flags: MessageFlags.Ephemeral,
-          });
-          return;
-        }
-
         await interaction.reply({
-          content: "Select an entry to edit or delete:",
+          content: viewingOwn
+            ? "Select an entry to edit or delete:"
+            : `Select an entry from ${targetUser.tag} to edit or delete:`,
           components: [buildEntriesSelect(interaction, userEntries)],
           flags: MessageFlags.Ephemeral,
         });

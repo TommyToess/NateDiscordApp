@@ -43,7 +43,7 @@ npm start
   - select one of your entries
   - edit the entry in a modal, or
   - delete it with confirmation
-  - managers can pass `user` to view someone else's entries in read-only mode
+  - managers can pass `user` to view, edit, or delete someone else's entries
 - `/entires` is an alias for `/entries` (same behavior).
 - `/top` updates both leaderboard messages (Top 10 Daily Sales and Top 10 Monthly Sales).
 - `/dailyap` shows a manager-only daily AP summary for all agents (ephemeral reply).
