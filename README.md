@@ -39,6 +39,10 @@ npm start
   - appointments made
   - policies closed
   - notes
+- `/entries` opens your entry manager flow:
+  - select one of your entries
+  - edit the entry in a modal, or
+  - delete it with confirmation
 - `/top` updates both leaderboard messages (Top 10 Daily Sales and Top 10 Monthly Sales).
 - `/dailyap` shows a manager-only daily AP summary for all agents (ephemeral reply).
 - `/saleslookup` shows one person's sales with period filters (`daily`, `monthly`, `yearly`, `all_time`).

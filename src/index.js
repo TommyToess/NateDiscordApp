@@ -4,6 +4,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const {
   ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   ChannelType,
   Client,
   EmbedBuilder,
@@ -15,6 +17,7 @@ const {
   REST,
   Routes,
   SlashCommandBuilder,
+  StringSelectMenuBuilder,
   TextInputBuilder,
   TextInputStyle,
 } = require("discord.js");
@@ -339,6 +342,228 @@ function buildPersonSalesSummary(submissions, { userId, agentName, period }) {
   return { matches, totalAp };
 }
 
+function getEntryById(submissions, id) {
+  return submissions.find((entry) => entry.id === id) ?? null;
+}
+
+function getEntryIndexById(submissions, id) {
+  return submissions.findIndex((entry) => entry.id === id);
+}
+
+function canManageEntry(interaction, entry) {
+  if (!entry) {
+    return false;
+  }
+  if (entry.submittedBy === interaction.user.id) {
+    return true;
+  }
+  return Boolean(interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild));
+}
+
+function buildEntrySummaryLine(entry) {
+  if ((entry.formType ?? "sales") === "sales") {
+    const ap = resolveSaleAp(entry) ?? 0;
+    return `${resolveSaleAgentName(entry) ?? "Unknown"} - ${formatCurrency(ap)}`;
+  }
+
+  const name = entry.agentName ?? "Unknown";
+  return `${name} - Calls ${entry.callsMade ?? 0}, Appts ${entry.appointmentsMade ?? 0}, Policies ${entry.policiesClosed ?? 0}`;
+}
+
+function buildEntriesSelect(interaction, userEntries) {
+  const options = userEntries.slice(0, 25).map((entry) => {
+    const createdAt = new Date(entry.createdAt);
+    const dateLabel = Number.isNaN(createdAt.getTime())
+      ? "Unknown date"
+      : createdAt.toLocaleDateString("en-US");
+    const typeLabel = (entry.formType ?? "sales") === "sales" ? "Sales" : "Check-In";
+
+    return {
+      label: `${typeLabel} | ${dateLabel}`.slice(0, 100),
+      description: buildEntrySummaryLine(entry).slice(0, 100),
+      value: entry.id,
+    };
+  });
+
+  const select = new StringSelectMenuBuilder()
+    .setCustomId("entries-select")
+    .setPlaceholder("Pick an entry to manage")
+    .addOptions(options);
+
+  return new ActionRowBuilder().addComponents(select);
+}
+
+function buildEntryActionButtons(entryId) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`entries-edit:${entryId}`)
+      .setLabel("Edit")
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`entries-delete:${entryId}`)
+      .setLabel("Delete")
+      .setStyle(ButtonStyle.Danger)
+  );
+}
+
+function buildDeleteConfirmButtons(entryId) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`entries-delete-confirm:${entryId}`)
+      .setLabel("Confirm Delete")
+      .setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId(`entries-delete-cancel:${entryId}`)
+      .setLabel("Cancel")
+      .setStyle(ButtonStyle.Secondary)
+  );
+}
+
+function buildEntryDetailsEmbed(entry) {
+  const isSales = (entry.formType ?? "sales") === "sales";
+  const createdAt = new Date(entry.createdAt);
+  const embed = new EmbedBuilder()
+    .setTitle(isSales ? "Sales Entry" : "Check-In Entry")
+    .setColor(isSales ? 0x2e8b57 : 0x1e90ff)
+    .setFooter({ text: `Entry ID: ${entry.id}` });
+
+  if (!Number.isNaN(createdAt.getTime())) {
+    embed.setTimestamp(createdAt);
+  }
+
+  if (isSales) {
+    embed.addFields(
+      { name: "Agent Name", value: entry.agentName ?? "Unknown", inline: true },
+      { name: "Company", value: entry.company ?? "Unknown", inline: true },
+      { name: "Product", value: entry.product ?? "Unknown", inline: true },
+      { name: "AP", value: formatCurrency(resolveSaleAp(entry) ?? 0), inline: true },
+      { name: "Notes", value: entry.notes || "None" }
+    );
+  } else {
+    embed.addFields(
+      { name: "Agent Name", value: entry.agentName ?? "Unknown", inline: true },
+      { name: "Calls Made", value: String(entry.callsMade ?? 0), inline: true },
+      { name: "Appointments Made", value: String(entry.appointmentsMade ?? 0), inline: true },
+      { name: "Policies Closed", value: String(entry.policiesClosed ?? 0), inline: true },
+      { name: "Notes", value: entry.notes || "None" }
+    );
+  }
+
+  return embed;
+}
+
+function buildEditSalesModal(entry) {
+  const modal = new ModalBuilder()
+    .setCustomId(`edit-sales:${entry.id}`)
+    .setTitle("Edit Sales Entry");
+
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId("agentName")
+        .setLabel("Agent Name")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(50)
+        .setValue(entry.agentName ?? "")
+    ),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId("company")
+        .setLabel("Company")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(80)
+        .setValue(entry.company ?? "")
+    ),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId("product")
+        .setLabel("Product")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(80)
+        .setValue(entry.product ?? "")
+    ),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId("ap")
+        .setLabel("AP ($ amount)")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(15)
+        .setValue(String(resolveSaleAp(entry) ?? 0))
+    ),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId("notes")
+        .setLabel("Notes")
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(false)
+        .setMaxLength(500)
+        .setValue(entry.notes ?? "")
+    )
+  );
+
+  return modal;
+}
+
+function buildEditCheckinModal(entry) {
+  const modal = new ModalBuilder()
+    .setCustomId(`edit-checkin:${entry.id}`)
+    .setTitle("Edit Check-In Entry");
+
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId("agentName")
+        .setLabel("Agent Name")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(50)
+        .setValue(entry.agentName ?? "")
+    ),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId("callsMade")
+        .setLabel("Calls Made")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(8)
+        .setValue(String(entry.callsMade ?? 0))
+    ),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId("appointmentsMade")
+        .setLabel("Appointments Made")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(8)
+        .setValue(String(entry.appointmentsMade ?? 0))
+    ),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId("policiesClosed")
+        .setLabel("Policies Closed")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(8)
+        .setValue(String(entry.policiesClosed ?? 0))
+    ),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId("notes")
+        .setLabel("Notes")
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(false)
+        .setMaxLength(500)
+        .setValue(entry.notes ?? "")
+    )
+  );
+
+  return modal;
+}
+
 function buildSalesSubmissionEmbed(entry) {
   return new EmbedBuilder()
     .setTitle("New Sales Submission")
@@ -480,6 +705,9 @@ const commands = [
   new SlashCommandBuilder()
     .setName("checkin")
     .setDescription("Open the daily check-in form."),
+  new SlashCommandBuilder()
+    .setName("entries")
+    .setDescription("View, edit, or delete your submitted entries."),
   new SlashCommandBuilder()
     .setName("top")
     .setDescription("Update the daily and monthly top 10 sales leaderboards."),
@@ -665,6 +893,28 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
+      if (interaction.commandName === "entries") {
+        const submissions = loadSubmissions();
+        const userEntries = submissions
+          .filter((entry) => entry.submittedBy === interaction.user.id)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        if (userEntries.length === 0) {
+          await interaction.reply({
+            content: "You do not have any entries yet.",
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+
+        await interaction.reply({
+          content: "Select an entry to edit or delete:",
+          components: [buildEntriesSelect(interaction, userEntries)],
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
       if (interaction.commandName === "top") {
         const submissions = loadSubmissions();
         await postLeaderboards(client, submissions);
@@ -757,7 +1007,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .slice(0, 20)
           .map((entry) => {
             const date = entry.createdAt.toLocaleDateString("en-US");
-            return `• ${date} - ${formatCurrency(entry.ap)} (${entry.agentName})`;
+            return `- ${date} - ${formatCurrency(entry.ap)} (${entry.agentName})`;
           })
           .join("\n");
 
@@ -779,6 +1029,223 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
         return;
       }
+    }
+
+    if (interaction.isStringSelectMenu() && interaction.customId === "entries-select") {
+      const entryId = interaction.values[0];
+      const submissions = loadSubmissions();
+      const entry = getEntryById(submissions, entryId);
+
+      if (!canManageEntry(interaction, entry)) {
+        await interaction.update({
+          content: "You do not have permission to manage that entry.",
+          embeds: [],
+          components: [],
+        });
+        return;
+      }
+
+      await interaction.update({
+        content: "Entry selected. Choose an action:",
+        embeds: [buildEntryDetailsEmbed(entry)],
+        components: [buildEntryActionButtons(entry.id)],
+      });
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith("entries-edit:")) {
+      const entryId = interaction.customId.split(":")[1];
+      const submissions = loadSubmissions();
+      const entry = getEntryById(submissions, entryId);
+
+      if (!canManageEntry(interaction, entry)) {
+        await interaction.reply({
+          content: "You do not have permission to edit that entry.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      if ((entry.formType ?? "sales") === "sales") {
+        await interaction.showModal(buildEditSalesModal(entry));
+      } else {
+        await interaction.showModal(buildEditCheckinModal(entry));
+      }
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith("entries-delete:")) {
+      const entryId = interaction.customId.split(":")[1];
+      const submissions = loadSubmissions();
+      const entry = getEntryById(submissions, entryId);
+
+      if (!canManageEntry(interaction, entry)) {
+        await interaction.update({
+          content: "You do not have permission to delete that entry.",
+          embeds: [],
+          components: [],
+        });
+        return;
+      }
+
+      await interaction.update({
+        content: "Are you sure you want to delete this entry?",
+        embeds: [buildEntryDetailsEmbed(entry)],
+        components: [buildDeleteConfirmButtons(entry.id)],
+      });
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith("entries-delete-confirm:")) {
+      const entryId = interaction.customId.split(":")[1];
+      const submissions = loadSubmissions();
+      const entryIndex = getEntryIndexById(submissions, entryId);
+      const entry = entryIndex >= 0 ? submissions[entryIndex] : null;
+
+      if (!canManageEntry(interaction, entry)) {
+        await interaction.update({
+          content: "You do not have permission to delete that entry.",
+          embeds: [],
+          components: [],
+        });
+        return;
+      }
+
+      submissions.splice(entryIndex, 1);
+      saveSubmissions(submissions);
+
+      if ((entry.formType ?? "sales") === "sales") {
+        await postLeaderboards(client, submissions);
+      }
+
+      await interaction.update({
+        content: "Entry deleted successfully.",
+        embeds: [],
+        components: [],
+      });
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith("entries-delete-cancel:")) {
+      const entryId = interaction.customId.split(":")[1];
+      const submissions = loadSubmissions();
+      const entry = getEntryById(submissions, entryId);
+
+      if (!canManageEntry(interaction, entry)) {
+        await interaction.update({
+          content: "Action cancelled.",
+          embeds: [],
+          components: [],
+        });
+        return;
+      }
+
+      await interaction.update({
+        content: "Delete cancelled. Choose an action:",
+        embeds: [buildEntryDetailsEmbed(entry)],
+        components: [buildEntryActionButtons(entry.id)],
+      });
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith("edit-sales:")) {
+      const entryId = interaction.customId.split(":")[1];
+      const submissions = loadSubmissions();
+      const entryIndex = getEntryIndexById(submissions, entryId);
+      const entry = entryIndex >= 0 ? submissions[entryIndex] : null;
+
+      if (!canManageEntry(interaction, entry)) {
+        await interaction.reply({
+          content: "You do not have permission to edit that entry.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const agentName = interaction.fields.getTextInputValue("agentName").trim();
+      const company = interaction.fields.getTextInputValue("company").trim();
+      const product = interaction.fields.getTextInputValue("product").trim();
+      const apRaw = interaction.fields.getTextInputValue("ap").trim();
+      const notes = interaction.fields.getTextInputValue("notes").trim();
+      const ap = parseApAmount(apRaw);
+
+      if (!agentName || !company || !product || ap === null) {
+        await interaction.reply({
+          content: "Invalid values. Please provide Agent Name, Company, Product, and a valid AP amount.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      submissions[entryIndex] = {
+        ...entry,
+        agentName,
+        company,
+        product,
+        ap,
+        notes,
+      };
+      saveSubmissions(submissions);
+      await postLeaderboards(client, submissions);
+
+      await interaction.reply({
+        content: "Sales entry updated successfully.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith("edit-checkin:")) {
+      const entryId = interaction.customId.split(":")[1];
+      const submissions = loadSubmissions();
+      const entryIndex = getEntryIndexById(submissions, entryId);
+      const entry = entryIndex >= 0 ? submissions[entryIndex] : null;
+
+      if (!canManageEntry(interaction, entry)) {
+        await interaction.reply({
+          content: "You do not have permission to edit that entry.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const agentName = interaction.fields.getTextInputValue("agentName").trim();
+      const callsMade = Number(interaction.fields.getTextInputValue("callsMade").trim());
+      const appointmentsMade = Number(interaction.fields.getTextInputValue("appointmentsMade").trim());
+      const policiesClosed = Number(interaction.fields.getTextInputValue("policiesClosed").trim());
+      const notes = interaction.fields.getTextInputValue("notes").trim();
+
+      if (
+        !agentName ||
+        !Number.isFinite(callsMade) ||
+        !Number.isFinite(appointmentsMade) ||
+        !Number.isFinite(policiesClosed) ||
+        callsMade < 0 ||
+        appointmentsMade < 0 ||
+        policiesClosed < 0
+      ) {
+        await interaction.reply({
+          content: "Invalid values. Please provide valid non-negative numbers.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      submissions[entryIndex] = {
+        ...entry,
+        agentName,
+        callsMade,
+        appointmentsMade,
+        policiesClosed,
+        notes,
+      };
+      saveSubmissions(submissions);
+
+      await interaction.reply({
+        content: "Check-in entry updated successfully.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
     }
 
     if (interaction.isModalSubmit() && interaction.customId === "submit-sales-modal") {
