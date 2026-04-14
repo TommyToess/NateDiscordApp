@@ -506,6 +506,34 @@ function buildEntriesSelect(interaction, userEntries) {
   return new ActionRowBuilder().addComponents(select);
 }
 
+function buildEntriesListEmbed(targetUser, userEntries) {
+  const lines = userEntries.map((entry) => {
+    const typeLabel = (entry.formType ?? "sales") === "sales" ? "Sales" : "Check-In";
+    const createdAt = new Date(entry.createdAt);
+    const dateLabel = Number.isNaN(createdAt.getTime())
+      ? "Unknown date"
+      : createdAt.toLocaleDateString("en-US");
+    return `- ${typeLabel} | ${dateLabel} | ${buildEntrySummaryLine(entry)} | ID: ${entry.id}`;
+  });
+
+  const maxDescriptionLength = 3900;
+  let description = lines.join("\n");
+  if (description.length > maxDescriptionLength) {
+    description = `${description.slice(0, maxDescriptionLength)}\n...`;
+  }
+
+  const selectableNotice =
+    userEntries.length > 25
+      ? "\n\nOnly the most recent 25 entries are selectable due to Discord menu limits."
+      : "";
+
+  return new EmbedBuilder()
+    .setTitle(`Entries for ${targetUser.tag}`)
+    .setDescription(`${description}${selectableNotice}`.slice(0, 4096))
+    .setColor(0x7289da)
+    .setTimestamp();
+}
+
 function buildEntryActionButtons(entryId) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -1098,8 +1126,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         await interaction.reply({
           content: viewingOwn
-            ? "Select an entry to edit or delete:"
-            : `Select an entry from ${targetUser.tag} to edit or delete:`,
+            ? "Review your entries below, then select one to edit or delete:"
+            : `Review ${targetUser.tag}'s entries below, then select one to edit or delete:`,
+          embeds: [buildEntriesListEmbed(targetUser, userEntries)],
           components: [buildEntriesSelect(interaction, userEntries)],
           flags: MessageFlags.Ephemeral,
         });
