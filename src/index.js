@@ -46,6 +46,7 @@ const REQUIRED_ENV = [
 
 const MANAGER_ROLE_ID = "1493320548535636038";
 const CEO_USER_ID = "1493320537185714359";
+const CEO_ROLE_ID = "1493320537185714359";
 
 const missing = REQUIRED_ENV.filter((name) => !process.env[name]);
 if (missing.length > 0) {
@@ -373,28 +374,57 @@ function filterEntriesForExport(submissions, { period, userId, agentName, formTy
   });
 }
 
-function buildExportRows(entries) {
-  return entries
-    .slice()
-    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-    .map((entry) => ({
-      entry_id: entry.id ?? "",
-      form_type: entry.formType ?? "sales",
-      created_at: entry.createdAt ?? "",
-      submitted_by: entry.submittedBy ?? "",
-      agent_name: entry.agentName ?? entry.performerName ?? "",
-      company: entry.company ?? "",
-      product: entry.product ?? "",
-      ap: resolveSaleAp(entry) ?? "",
-      calls_made: entry.callsMade ?? "",
-      appointments_made: entry.appointmentsMade ?? "",
-      policies_closed: entry.policiesClosed ?? "",
-      notes: entry.notes ?? "",
-    }));
+function formatDateForExport(isoDate) {
+  const date = new Date(isoDate);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return date.toISOString().slice(0, 10);
 }
 
-function buildEntriesWorkbookBuffer(entries) {
-  const rows = buildExportRows(entries);
+function buildExportRows(entries, formType) {
+  const sorted = entries
+    .slice()
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+  if (formType === "sales") {
+    return sorted.map((entry) => ({
+      Date: formatDateForExport(entry.createdAt),
+      Name: entry.agentName ?? entry.performerName ?? "",
+      Company: entry.company ?? "",
+      Product: entry.product ?? "",
+      AP: resolveSaleAp(entry) ?? "",
+      Notes: entry.notes ?? "",
+    }));
+  }
+
+  if (formType === "daily_checkin") {
+    return sorted.map((entry) => ({
+      Date: formatDateForExport(entry.createdAt),
+      Name: entry.agentName ?? "",
+      "Calls Made": entry.callsMade ?? "",
+      "Appointments Made": entry.appointmentsMade ?? "",
+      "Policies Closed": entry.policiesClosed ?? "",
+      Notes: entry.notes ?? "",
+    }));
+  }
+
+  return sorted.map((entry) => ({
+    Date: formatDateForExport(entry.createdAt),
+    Type: entry.formType ?? "sales",
+    Name: entry.agentName ?? entry.performerName ?? "",
+    Company: entry.company ?? "",
+    Product: entry.product ?? "",
+    AP: resolveSaleAp(entry) ?? "",
+    "Calls Made": entry.callsMade ?? "",
+    "Appointments Made": entry.appointmentsMade ?? "",
+    "Policies Closed": entry.policiesClosed ?? "",
+    Notes: entry.notes ?? "",
+  }));
+}
+
+function buildEntriesWorkbookBuffer(entries, formType) {
+  const rows = buildExportRows(entries, formType);
   const worksheet = XLSX.utils.json_to_sheet(rows);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "Entries");
@@ -430,11 +460,11 @@ function hasManagerAccess(interaction) {
   }
 
   if (Array.isArray(roles)) {
-    return roles.includes(MANAGER_ROLE_ID);
+    return roles.includes(MANAGER_ROLE_ID) || roles.includes(CEO_ROLE_ID);
   }
 
   if (roles.cache) {
-    return roles.cache.has(MANAGER_ROLE_ID);
+    return roles.cache.has(MANAGER_ROLE_ID) || roles.cache.has(CEO_ROLE_ID);
   }
 
   return false;
@@ -1231,7 +1261,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           return;
         }
 
-        const workbookBuffer = buildEntriesWorkbookBuffer(filteredEntries);
+        const workbookBuffer = buildEntriesWorkbookBuffer(filteredEntries, formType);
         const dateStamp = new Date().toISOString().slice(0, 10);
         const filename = `entries-${period}-${formType}-${dateStamp}.xlsx`;
         const attachment = new AttachmentBuilder(workbookBuffer, { name: filename });
