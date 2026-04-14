@@ -43,10 +43,22 @@ npm start
   - select one of your entries
   - edit the entry in a modal, or
   - delete it with confirmation
+  - managers can pass `user` to view someone else's entries in read-only mode
+- `/entires` is an alias for `/entries` (same behavior).
 - `/top` updates both leaderboard messages (Top 10 Daily Sales and Top 10 Monthly Sales).
 - `/dailyap` shows a manager-only daily AP summary for all agents (ephemeral reply).
 - `/saleslookup` shows one person's sales with period filters (`daily`, `monthly`, `yearly`, `all_time`).
   - provide `user` and/or `agent_name`
+- `/downloadentries` downloads entries as an Excel file (`.xlsx`) with filters:
+  - `period`: `daily`, `monthly`, `yearly`, `all_time`
+  - optional: `form_type` (`all`, `sales`, `daily_checkin`), `user`, `agent_name`
+
+## Access Control
+
+- Manager role ID: `1493320548535636038`
+- CEO user ID: `1493320537185714359`
+- Manager/CEO-only commands: `/dailyap`, `/saleslookup`, `/downloadentries`
+- Manager/CEO can also view and manage other users' entries.
 
 ## Submission Channel Behavior
 

@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const {
   ActionRowBuilder,
+  AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
@@ -13,7 +14,6 @@ const {
   GatewayIntentBits,
   ModalBuilder,
   MessageFlags,
-  PermissionFlagsBits,
   REST,
   Routes,
   SlashCommandBuilder,
@@ -21,6 +21,7 @@ const {
   TextInputBuilder,
   TextInputStyle,
 } = require("discord.js");
+const XLSX = require("xlsx");
 
 const {
   DISCORD_TOKEN,
@@ -42,6 +43,9 @@ const REQUIRED_ENV = [
   "CHECKIN_LOG_CHANNEL_ID",
   "LEADERBOARD_CHANNEL_ID",
 ];
+
+const MANAGER_ROLE_ID = "1493320548535636038";
+const CEO_USER_ID = "1493320537185714359";
 
 const missing = REQUIRED_ENV.filter((name) => !process.env[name]);
 if (missing.length > 0) {
@@ -342,6 +346,61 @@ function buildPersonSalesSummary(submissions, { userId, agentName, period }) {
   return { matches, totalAp };
 }
 
+function filterEntriesForExport(submissions, { period, userId, agentName, formType }) {
+  return submissions.filter((entry) => {
+    const createdAt = new Date(entry.createdAt);
+    if (Number.isNaN(createdAt.getTime()) || !isInPeriod(createdAt, period)) {
+      return false;
+    }
+
+    if (formType !== "all" && (entry.formType ?? "sales") !== formType) {
+      return false;
+    }
+
+    if (userId && entry.submittedBy !== userId) {
+      return false;
+    }
+
+    if (agentName) {
+      const resolvedName =
+        (entry.agentName ?? entry.performerName ?? "").toString().trim().toLowerCase();
+      if (resolvedName !== agentName.trim().toLowerCase()) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+}
+
+function buildExportRows(entries) {
+  return entries
+    .slice()
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    .map((entry) => ({
+      entry_id: entry.id ?? "",
+      form_type: entry.formType ?? "sales",
+      created_at: entry.createdAt ?? "",
+      submitted_by: entry.submittedBy ?? "",
+      agent_name: entry.agentName ?? entry.performerName ?? "",
+      company: entry.company ?? "",
+      product: entry.product ?? "",
+      ap: resolveSaleAp(entry) ?? "",
+      calls_made: entry.callsMade ?? "",
+      appointments_made: entry.appointmentsMade ?? "",
+      policies_closed: entry.policiesClosed ?? "",
+      notes: entry.notes ?? "",
+    }));
+}
+
+function buildEntriesWorkbookBuffer(entries) {
+  const rows = buildExportRows(entries);
+  const worksheet = XLSX.utils.json_to_sheet(rows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Entries");
+  return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+}
+
 function getEntryById(submissions, id) {
   return submissions.find((entry) => entry.id === id) ?? null;
 }
@@ -357,7 +416,28 @@ function canManageEntry(interaction, entry) {
   if (entry.submittedBy === interaction.user.id) {
     return true;
   }
-  return Boolean(interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild));
+  return hasManagerAccess(interaction);
+}
+
+function hasManagerAccess(interaction) {
+  if (interaction.user.id === CEO_USER_ID) {
+    return true;
+  }
+
+  const roles = interaction.member?.roles;
+  if (!roles) {
+    return false;
+  }
+
+  if (Array.isArray(roles)) {
+    return roles.includes(MANAGER_ROLE_ID);
+  }
+
+  if (roles.cache) {
+    return roles.cache.has(MANAGER_ROLE_ID);
+  }
+
+  return false;
 }
 
 function buildEntrySummaryLine(entry) {
@@ -707,19 +787,26 @@ const commands = [
     .setDescription("Open the daily check-in form."),
   new SlashCommandBuilder()
     .setName("entries")
-    .setDescription("View, edit, or delete your submitted entries."),
+    .setDescription("View your entries, or manager-read-only view of another user's entries.")
+    .addUserOption((option) =>
+      option.setName("user").setDescription("User to view (manager read-only)")
+    ),
+  new SlashCommandBuilder()
+    .setName("entires")
+    .setDescription("Alias for /entries.")
+    .addUserOption((option) =>
+      option.setName("user").setDescription("User to view (manager read-only)")
+    ),
   new SlashCommandBuilder()
     .setName("top")
     .setDescription("Update the daily and monthly top 10 sales leaderboards."),
   new SlashCommandBuilder()
     .setName("dailyap")
     .setDescription("Manager: show today's AP summary for all agents.")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false),
   new SlashCommandBuilder()
     .setName("saleslookup")
     .setDescription("Manager: view one person's sales by period.")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
     .addStringOption((option) =>
       option
@@ -738,6 +825,39 @@ const commands = [
     )
     .addStringOption((option) =>
       option.setName("agent_name").setDescription("Agent name to look up")
+    ),
+  new SlashCommandBuilder()
+    .setName("downloadentries")
+    .setDescription("Manager: download entries as an Excel file.")
+    .setDMPermission(false)
+    .addStringOption((option) =>
+      option
+        .setName("period")
+        .setDescription("Time range")
+        .setRequired(true)
+        .addChoices(
+          { name: "Daily", value: "daily" },
+          { name: "Monthly", value: "monthly" },
+          { name: "Yearly", value: "yearly" },
+          { name: "All Time", value: "all_time" }
+        )
+    )
+    .addStringOption((option) =>
+      option
+        .setName("form_type")
+        .setDescription("Filter by form type")
+        .setRequired(false)
+        .addChoices(
+          { name: "All", value: "all" },
+          { name: "Sales", value: "sales" },
+          { name: "Check-In", value: "daily_checkin" }
+        )
+    )
+    .addUserOption((option) =>
+      option.setName("user").setDescription("Filter by submitting user")
+    )
+    .addStringOption((option) =>
+      option.setName("agent_name").setDescription("Filter by agent name")
     ),
 ].map((command) => command.toJSON());
 
@@ -893,15 +1013,50 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
-      if (interaction.commandName === "entries") {
+      if (interaction.commandName === "entries" || interaction.commandName === "entires") {
+        const selectedUser = interaction.options.getUser("user");
+        const targetUser = selectedUser ?? interaction.user;
+        const viewingOwn = targetUser.id === interaction.user.id;
+
+        if (!viewingOwn && !hasManagerAccess(interaction)) {
+          await interaction.reply({
+            content: "Only managers can view another user's entries.",
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+
         const submissions = loadSubmissions();
         const userEntries = submissions
-          .filter((entry) => entry.submittedBy === interaction.user.id)
+          .filter((entry) => entry.submittedBy === targetUser.id)
           .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
         if (userEntries.length === 0) {
           await interaction.reply({
-            content: "You do not have any entries yet.",
+            content: `${viewingOwn ? "You do" : "That user does"} not have any entries yet.`,
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+
+        if (!viewingOwn) {
+          const lines = userEntries.slice(0, 20).map((entry) => {
+            const typeLabel = (entry.formType ?? "sales") === "sales" ? "Sales" : "Check-In";
+            const createdAt = new Date(entry.createdAt);
+            const dateLabel = Number.isNaN(createdAt.getTime())
+              ? "Unknown date"
+              : createdAt.toLocaleDateString("en-US");
+            return `- ${typeLabel} | ${dateLabel} | ${buildEntrySummaryLine(entry)} | ID: ${entry.id}`;
+          });
+
+          const embed = new EmbedBuilder()
+            .setTitle(`Entries for ${targetUser.tag}`)
+            .setDescription(lines.join("\n").slice(0, 4000))
+            .setColor(0x7289da)
+            .setTimestamp();
+
+          await interaction.reply({
+            embeds: [embed],
             flags: MessageFlags.Ephemeral,
           });
           return;
@@ -926,6 +1081,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       if (interaction.commandName === "dailyap") {
+        if (!hasManagerAccess(interaction)) {
+          await interaction.reply({
+            content: "Only managers or the CEO can use this command.",
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+
         const submissions = loadSubmissions();
         const summaryRows = buildDailyApSummary(submissions);
 
@@ -966,6 +1129,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       if (interaction.commandName === "saleslookup") {
+        if (!hasManagerAccess(interaction)) {
+          await interaction.reply({
+            content: "Only managers or the CEO can use this command.",
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+
         const user = interaction.options.getUser("user");
         const agentName = interaction.options.getString("agent_name");
         const period = interaction.options.getString("period", true);
@@ -1025,6 +1196,49 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         await interaction.reply({
           embeds: [embed],
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      if (interaction.commandName === "downloadentries") {
+        if (!hasManagerAccess(interaction)) {
+          await interaction.reply({
+            content: "Only managers or the CEO can use this command.",
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+
+        const period = interaction.options.getString("period", true);
+        const formType = interaction.options.getString("form_type") ?? "all";
+        const user = interaction.options.getUser("user");
+        const agentName = interaction.options.getString("agent_name");
+
+        const submissions = loadSubmissions();
+        const filteredEntries = filterEntriesForExport(submissions, {
+          period,
+          userId: user?.id ?? null,
+          agentName: agentName ?? null,
+          formType,
+        });
+
+        if (filteredEntries.length === 0) {
+          await interaction.reply({
+            content: "No entries matched those filters.",
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+
+        const workbookBuffer = buildEntriesWorkbookBuffer(filteredEntries);
+        const dateStamp = new Date().toISOString().slice(0, 10);
+        const filename = `entries-${period}-${formType}-${dateStamp}.xlsx`;
+        const attachment = new AttachmentBuilder(workbookBuffer, { name: filename });
+
+        await interaction.reply({
+          content: `Export ready. ${filteredEntries.length} entries included.`,
+          files: [attachment],
           flags: MessageFlags.Ephemeral,
         });
         return;
