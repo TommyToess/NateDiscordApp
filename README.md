@@ -40,7 +40,9 @@ npm start
   - policies closed
   - notes
 - `/top` updates both leaderboard messages (Top 10 Daily Sales and Top 10 Monthly Sales).
-- `/manager_daily_ap` shows a manager-only daily AP summary for all agents (ephemeral reply).
+- `/dailyap` shows a manager-only daily AP summary for all agents (ephemeral reply).
+- `/saleslookup` shows one person's sales with period filters (`daily`, `monthly`, `yearly`, `all_time`).
+  - provide `user` and/or `agent_name`
 
 ## Submission Channel Behavior
 

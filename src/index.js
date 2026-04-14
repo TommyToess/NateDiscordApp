@@ -143,6 +143,43 @@ function isSameLocalMonth(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
 }
 
+function isSameLocalYear(a, b) {
+  return a.getFullYear() === b.getFullYear();
+}
+
+function isInPeriod(date, period) {
+  const now = new Date();
+  if (period === "daily") {
+    return isSameLocalDay(date, now);
+  }
+  if (period === "monthly") {
+    return isSameLocalMonth(date, now);
+  }
+  if (period === "yearly") {
+    return isSameLocalYear(date, now);
+  }
+  return true;
+}
+
+function parseApAmount(input) {
+  const cleaned = String(input).trim().replace(/[$,\s]/g, "");
+  if (!cleaned) {
+    return null;
+  }
+
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function formatCurrency(amount) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
 function buildLeaderboard(submissions, period) {
   const totals = new Map();
   const now = new Date();
@@ -242,6 +279,66 @@ function buildDailyApSummary(submissions) {
   return [...totals.values()].sort((a, b) => b.totalAp - a.totalAp);
 }
 
+function resolveSaleAp(entry) {
+  if (typeof entry.ap === "number") {
+    return entry.ap;
+  }
+  if (typeof entry.score === "number") {
+    return entry.score;
+  }
+  return null;
+}
+
+function resolveSaleAgentName(entry) {
+  if (typeof entry.agentName === "string" && entry.agentName.trim()) {
+    return entry.agentName.trim();
+  }
+  if (typeof entry.performerName === "string" && entry.performerName.trim()) {
+    return entry.performerName.trim();
+  }
+  return null;
+}
+
+function buildPersonSalesSummary(submissions, { userId, agentName, period }) {
+  const matches = [];
+
+  for (const entry of submissions) {
+    if ((entry.formType ?? "sales") !== "sales") {
+      continue;
+    }
+
+    const createdAt = new Date(entry.createdAt);
+    if (Number.isNaN(createdAt.getTime()) || !isInPeriod(createdAt, period)) {
+      continue;
+    }
+
+    const entryAgentName = resolveSaleAgentName(entry);
+    const ap = resolveSaleAp(entry);
+    if (!entryAgentName || ap === null) {
+      continue;
+    }
+
+    const byUser = userId && entry.submittedBy === userId;
+    const byAgentName =
+      agentName && entryAgentName.toLowerCase() === agentName.trim().toLowerCase();
+
+    if (!byUser && !byAgentName) {
+      continue;
+    }
+
+    matches.push({
+      id: entry.id,
+      agentName: entryAgentName,
+      submittedBy: entry.submittedBy ?? null,
+      ap,
+      createdAt,
+    });
+  }
+
+  const totalAp = matches.reduce((sum, entry) => sum + entry.ap, 0);
+  return { matches, totalAp };
+}
+
 function buildSalesSubmissionEmbed(entry) {
   return new EmbedBuilder()
     .setTitle("New Sales Submission")
@@ -250,7 +347,7 @@ function buildSalesSubmissionEmbed(entry) {
       { name: "Agent Name", value: entry.agentName, inline: true },
       { name: "Company", value: entry.company, inline: true },
       { name: "Product", value: entry.product, inline: true },
-      { name: "AP", value: String(entry.ap), inline: true },
+      { name: "AP", value: formatCurrency(entry.ap), inline: true },
       { name: "Submitted By", value: `<@${entry.submittedBy}>`, inline: true },
       { name: "Notes", value: entry.notes || "None" }
     )
@@ -280,7 +377,7 @@ function buildLeaderboardEmbed(leaderboard, period) {
     ? leaderboard
       .map((item) => {
         const label = item.submittedBy ? `<@${item.submittedBy}>` : item.name;
-        return `**#${item.rank}** ${label} - ${item.totalScore}`;
+        return `**#${item.rank}** ${label} - ${formatCurrency(item.totalScore)}`;
       })
       .join("\n")
     : period === "daily"
@@ -387,10 +484,33 @@ const commands = [
     .setName("top")
     .setDescription("Update the daily and monthly top 10 sales leaderboards."),
   new SlashCommandBuilder()
-    .setName("manager_daily_ap")
+    .setName("dailyap")
     .setDescription("Manager: show today's AP summary for all agents.")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false),
+  new SlashCommandBuilder()
+    .setName("saleslookup")
+    .setDescription("Manager: view one person's sales by period.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .setDMPermission(false)
+    .addUserOption((option) =>
+      option.setName("user").setDescription("Discord user to look up")
+    )
+    .addStringOption((option) =>
+      option.setName("agent_name").setDescription("Agent name to look up")
+    )
+    .addStringOption((option) =>
+      option
+        .setName("period")
+        .setDescription("Time range")
+        .setRequired(true)
+        .addChoices(
+          { name: "Daily", value: "daily" },
+          { name: "Monthly", value: "monthly" },
+          { name: "Yearly", value: "yearly" },
+          { name: "All Time", value: "all_time" }
+        )
+    ),
 ].map((command) => command.toJSON());
 
 async function registerCommands() {
@@ -454,8 +574,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const apInput = new TextInputBuilder()
           .setCustomId("ap")
-          .setLabel("AP (number)")
-          .setPlaceholder("Example: 10")
+          .setLabel("AP ($ amount)")
+          .setPlaceholder("Example: $10.50")
           .setRequired(true)
           .setStyle(TextInputStyle.Short)
           .setMaxLength(10);
@@ -555,7 +675,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
-      if (interaction.commandName === "manager_daily_ap") {
+      if (interaction.commandName === "dailyap") {
         const submissions = loadSubmissions();
         const summaryRows = buildDailyApSummary(submissions);
 
@@ -572,7 +692,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const description = summaryRows
           .map((row, index) => {
             const label = row.submittedBy ? `<@${row.submittedBy}>` : row.displayName;
-            return `**${index + 1}.** ${label} - AP: ${row.totalAp} (Sales: ${row.salesCount})`;
+            return `**${index + 1}.** ${label} - AP: ${formatCurrency(row.totalAp)} (Sales: ${row.salesCount})`;
           })
           .join("\n")
           .slice(0, 4000);
@@ -581,7 +701,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .setTitle("Manager Daily AP Summary")
           .setDescription(description)
           .addFields(
-            { name: "Total AP Today", value: String(totalAp), inline: true },
+            { name: "Total AP Today", value: formatCurrency(totalAp), inline: true },
             { name: "Total Sales Today", value: String(totalSales), inline: true },
             { name: "Agents Reported", value: String(summaryRows.length), inline: true }
           )
@@ -590,6 +710,71 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         await interaction.reply({
           embeds: [summaryEmbed],
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      if (interaction.commandName === "saleslookup") {
+        const user = interaction.options.getUser("user");
+        const agentName = interaction.options.getString("agent_name");
+        const period = interaction.options.getString("period", true);
+
+        if (!user && !agentName) {
+          await interaction.reply({
+            content: "Provide either `user` or `agent_name`.",
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+
+        const submissions = loadSubmissions();
+        const { matches, totalAp } = buildPersonSalesSummary(submissions, {
+          userId: user?.id ?? null,
+          agentName: agentName ?? null,
+          period,
+        });
+
+        if (matches.length === 0) {
+          await interaction.reply({
+            content: "No matching sales found for that person and period.",
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+
+        const periodLabel =
+          period === "daily"
+            ? "Daily"
+            : period === "monthly"
+              ? "Monthly"
+              : period === "yearly"
+                ? "Yearly"
+                : "All Time";
+        const personLabel = user ? `<@${user.id}>` : agentName;
+        const lines = matches
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+          .slice(0, 20)
+          .map((entry) => {
+            const date = entry.createdAt.toLocaleDateString("en-US");
+            return `• ${date} - ${formatCurrency(entry.ap)} (${entry.agentName})`;
+          })
+          .join("\n");
+
+        const embed = new EmbedBuilder()
+          .setTitle("Sales Lookup")
+          .setDescription(lines)
+          .addFields(
+            { name: "Person", value: String(personLabel), inline: true },
+            { name: "Period", value: periodLabel, inline: true },
+            { name: "Entries", value: String(matches.length), inline: true },
+            { name: "Total AP", value: formatCurrency(totalAp) }
+          )
+          .setColor(0x2d9cdb)
+          .setTimestamp();
+
+        await interaction.reply({
+          embeds: [embed],
           flags: MessageFlags.Ephemeral,
         });
         return;
@@ -603,10 +788,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const apRaw = interaction.fields.getTextInputValue("ap").trim();
       const notes = interaction.fields.getTextInputValue("notes").trim();
 
-      const ap = Number(apRaw);
-      if (!Number.isFinite(ap) || ap < 0) {
+      const ap = parseApAmount(apRaw);
+      if (ap === null) {
         await interaction.reply({
-          content: "AP must be a non-negative number.",
+          content: "AP must be a non-negative amount (examples: 10, $10, 1,250.50).",
           flags: MessageFlags.Ephemeral,
         });
         return;
