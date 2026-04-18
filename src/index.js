@@ -725,7 +725,7 @@ function buildSalesSubmissionEmbed(entry) {
   ];
 
   return new EmbedBuilder()
-    .setTitle("Sales Submission")
+    .setTitle("🤑 Sales Submission")
     .setColor(0x2e8b57)
     .setDescription("Recorded successfully.")
     .addFields({ name: "\u200b", value: lines.join("\n"), inline: false })
