@@ -220,9 +220,10 @@ function buildLeaderboard(submissions, period) {
       continue;
     }
 
-    // Use Discord user ID as the canonical identity when available so
-    // name typos/variants still map to the same person.
-    const identityKey = entry.submittedBy ? `user:${entry.submittedBy}` : `name:${agentName.toLowerCase()}`;
+    const identityKey = entry.submittedBy
+      ? `user:${entry.submittedBy}`
+      : `name:${agentName.toLowerCase()}`;
+
     const current = totals.get(identityKey) ?? {
       totalScore: 0,
       submittedBy: entry.submittedBy ?? null,
@@ -269,7 +270,10 @@ function buildDailyApSummary(submissions) {
       continue;
     }
 
-    const identityKey = entry.submittedBy ? `user:${entry.submittedBy}` : `name:${agentName.toLowerCase()}`;
+    const identityKey = entry.submittedBy
+      ? `user:${entry.submittedBy}`
+      : `name:${agentName.toLowerCase()}`;
+
     const current = totals.get(identityKey) ?? {
       totalAp: 0,
       salesCount: 0,
@@ -442,16 +446,6 @@ function getEntryIndexById(submissions, id) {
   return submissions.findIndex((entry) => entry.id === id);
 }
 
-function canManageEntry(interaction, entry) {
-  if (!entry) {
-    return false;
-  }
-  if (entry.submittedBy === interaction.user.id) {
-    return true;
-  }
-  return hasManagerAccess(interaction);
-}
-
 function hasManagerAccess(interaction) {
   if (interaction.user.id === CEO_USER_ID) {
     return true;
@@ -471,6 +465,16 @@ function hasManagerAccess(interaction) {
   }
 
   return false;
+}
+
+function canManageEntry(interaction, entry) {
+  if (!entry) {
+    return false;
+  }
+  if (entry.submittedBy === interaction.user.id) {
+    return true;
+  }
+  return hasManagerAccess(interaction);
 }
 
 function buildEntrySummaryLine(entry) {
@@ -574,19 +578,19 @@ function buildEntryDetailsEmbed(entry) {
 
   if (isSales) {
     embed.addFields(
-      { name: "Agent Name", value: entry.agentName ?? "Unknown", inline: true },
-      { name: "Company", value: entry.company ?? "Unknown", inline: true },
-      { name: "Product", value: entry.product ?? "Unknown", inline: true },
-      { name: "AP", value: formatCurrency(resolveSaleAp(entry) ?? 0), inline: true },
-      { name: "Notes", value: entry.notes || "None" }
+      { name: "👤 Agent", value: entry.agentName ?? "Unknown", inline: true },
+      { name: "🏢 Company", value: entry.company ?? "Unknown", inline: true },
+      { name: "📦 Product", value: entry.product ?? "Unknown", inline: true },
+      { name: "💰 AP", value: formatCurrency(resolveSaleAp(entry) ?? 0), inline: true },
+      { name: "📝 Notes", value: entry.notes || "None", inline: false }
     );
   } else {
     embed.addFields(
-      { name: "Agent Name", value: entry.agentName ?? "Unknown", inline: true },
-      { name: "Calls Made", value: String(entry.callsMade ?? 0), inline: true },
-      { name: "Appointments Made", value: String(entry.appointmentsMade ?? 0), inline: true },
-      { name: "Policies Closed", value: String(entry.policiesClosed ?? 0), inline: true },
-      { name: "Notes", value: entry.notes || "None" }
+      { name: "👤 Agent", value: entry.agentName ?? "Unknown", inline: true },
+      { name: "📞 Calls", value: String(entry.callsMade ?? 0), inline: true },
+      { name: "📅 Appointments", value: String(entry.appointmentsMade ?? 0), inline: true },
+      { name: "✅ Policies", value: String(entry.policiesClosed ?? 0), inline: true },
+      { name: "📝 Notes", value: entry.notes || "None", inline: false }
     );
   }
 
@@ -706,78 +710,108 @@ function buildEditCheckinModal(entry) {
 }
 
 function buildSalesSubmissionEmbed(entry) {
-  const notes = entry.notes?.trim() || "None";
-  const lines = [
-    `**Agent**`,
-    entry.agentName,
-    "",
-    `**Company**`,
-    entry.company,
-    "",
-    `**Product**`,
-    entry.product,
-    "",
-    `**AP**`,
-    formatCurrency(entry.ap),
-    "",
-    `**Notes**`,
-    notes,
-  ];
-
   return new EmbedBuilder()
-    .setTitle("🤑 Sales Submission")
-    .setColor(0x2e8b57)
+    .setTitle("🤑 New Sale Recorded")
     .setDescription("Recorded successfully.")
-    .addFields({ name: "\u200b", value: lines.join("\n"), inline: false })
+    .setColor(0x2ecc71)
+    .addFields(
+      { name: "👤 Agent", value: entry.agentName, inline: true },
+      { name: "🏢 Company", value: entry.company, inline: true },
+      { name: "📦 Product", value: entry.product, inline: true },
+      { name: "💰 AP", value: formatCurrency(entry.ap), inline: true },
+      { name: "📝 Notes", value: entry.notes?.trim() || "None", inline: false }
+    )
     .setFooter({ text: `Sales ID: ${entry.id}` })
     .setTimestamp(new Date(entry.createdAt));
 }
 
 function buildCheckInSubmissionEmbed(entry) {
-  const notes = entry.notes?.trim() || "None";
-  const lines = [
-    `**Agent**`,
-    entry.agentName,
-    "",
-    `**Calls Made**`,
-    String(entry.callsMade),
-    "",
-    `**Appointments Made**`,
-    String(entry.appointmentsMade),
-    "",
-    `**Policies Closed**`,
-    String(entry.policiesClosed),
-    "",
-    `**Notes**`,
-    notes,
-  ];
-
   return new EmbedBuilder()
-    .setTitle("Daily Check-In Recorded")
-    .setColor(0x1e90ff)
+    .setTitle("📋 Daily Check-In Recorded")
     .setDescription("A new daily check-in entry was added.")
-    .addFields({ name: "\u200b", value: lines.join("\n"), inline: false })
+    .setColor(0x3498db)
+    .addFields(
+      { name: "👤 Agent", value: entry.agentName, inline: true },
+      { name: "📞 Calls", value: String(entry.callsMade), inline: true },
+      { name: "📅 Appointments", value: String(entry.appointmentsMade), inline: true },
+      { name: "✅ Policies", value: String(entry.policiesClosed), inline: true },
+      { name: "📝 Notes", value: entry.notes?.trim() || "None", inline: false }
+    )
     .setFooter({ text: `Check-In ID: ${entry.id}` })
     .setTimestamp(new Date(entry.createdAt));
 }
 
+function getLeaderboardColor(leaderboard) {
+  if (!leaderboard.length) {
+    return 0x808080;
+  }
+  if (leaderboard[0].totalScore >= 5000) {
+    return 0x00c853;
+  }
+  if (leaderboard[0].totalScore >= 1000) {
+    return 0xffa500;
+  }
+  return 0x2f80ed;
+}
+
+function buildLeaderboardRefreshRow(period) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`refresh_leaderboard:${period}`)
+      .setLabel("🔄 Refresh")
+      .setStyle(ButtonStyle.Primary)
+  );
+}
+
 function buildLeaderboardEmbed(leaderboard, period) {
-  const title = period === "daily" ? "Top 10 Daily Sales" : "Top 10 Monthly Sales";
-  const lines = leaderboard.length
-    ? leaderboard
-      .map((item) => {
-        const label = item.submittedBy ? `<@${item.submittedBy}>` : item.name;
-        return `**#${item.rank}** ${label} - ${formatCurrency(item.totalScore)}`;
-      })
-      .join("\n")
-    : period === "daily"
-      ? "No sales submissions yet for today."
-      : "No sales submissions yet for this month.";
+  const isDaily = period === "daily";
+  const title = isDaily ? "🔥 Daily Leaders" : "🏆 Monthly Leaders";
+  const emptyText = isDaily
+    ? "No sales submissions yet for today."
+    : "No sales submissions yet for this month.";
+
+  const medals = ["🥇", "🥈", "🥉"];
+  const topThree = leaderboard.slice(0, 3);
+  const remaining = leaderboard.slice(3);
+
+  const topBlock = topThree.length
+    ? topThree
+        .map((item, index) => {
+          const label = item.submittedBy ? `<@${item.submittedBy}>` : item.name;
+          return `${medals[index]} **${label}**\n${formatCurrency(item.totalScore)}`;
+        })
+        .join("\n\n")
+    : emptyText;
+
+  const restBlock = remaining.length
+    ? remaining
+        .map((item) => {
+          const label = item.submittedBy ? `<@${item.submittedBy}>` : item.name;
+          return `**#${item.rank}** ${label} — ${formatCurrency(item.totalScore)}`;
+        })
+        .join("\n")
+    : "No additional ranked entries yet.";
+
+  const topAgent =
+    leaderboard.length > 0
+      ? leaderboard[0].submittedBy
+        ? `<@${leaderboard[0].submittedBy}>`
+        : leaderboard[0].name
+      : "None yet";
+
+  const totalTracked = leaderboard.reduce((sum, item) => sum + item.totalScore, 0);
 
   return new EmbedBuilder()
     .setTitle(title)
-    .setDescription(lines)
-    .setColor(0xffa500)
+    .setDescription(`⭐ **Top Performer:** ${topAgent}`)
+    .addFields(
+      { name: "Top 3", value: topBlock, inline: false },
+      { name: "Ranks 4-10", value: restBlock, inline: false },
+      { name: "Tracked AP", value: formatCurrency(totalTracked), inline: true },
+      { name: "Agents Ranked", value: String(leaderboard.length), inline: true }
+    )
+    .setColor(getLeaderboardColor(leaderboard))
+    .setFooter({ text: "Live Leaderboard • Press refresh anytime" })
     .setTimestamp();
 }
 
@@ -799,18 +833,20 @@ function buildSubmissionInstructionsEmbed() {
     .setTimestamp();
 }
 
-async function upsertLeaderboardMessage(channel, messageId, embed) {
+async function upsertLeaderboardMessage(channel, messageId, embed, period) {
+  const components = [buildLeaderboardRefreshRow(period)];
+
   if (messageId) {
     try {
       const existing = await channel.messages.fetch(messageId);
-      await existing.edit({ embeds: [embed] });
+      await existing.edit({ embeds: [embed], components });
       return messageId;
     } catch (error) {
       console.error("Existing leaderboard message not found, creating a new one.", error);
     }
   }
 
-  const created = await channel.send({ embeds: [embed] });
+  const created = await channel.send({ embeds: [embed], components });
   return created.id;
 }
 
@@ -852,12 +888,14 @@ async function postLeaderboards(client, submissions) {
   const dailyMessageId = await upsertLeaderboardMessage(
     leaderboardChannel,
     state.dailyMessageId,
-    dailyEmbed
+    dailyEmbed,
+    "daily"
   );
   const monthlyMessageId = await upsertLeaderboardMessage(
     leaderboardChannel,
     state.monthlyMessageId,
-    monthlyEmbed
+    monthlyEmbed,
+    "monthly"
   );
 
   saveLeaderboardState({ dailyMessageId, monthlyMessageId });
@@ -1332,6 +1370,24 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
 
+    if (interaction.isButton() && interaction.customId.startsWith("refresh_leaderboard:")) {
+      const submissions = loadSubmissions();
+      await postLeaderboards(client, submissions);
+
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp({
+          content: "Leaderboard refreshed.",
+          flags: MessageFlags.Ephemeral,
+        });
+      } else {
+        await interaction.reply({
+          content: "Leaderboard refreshed.",
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+      return;
+    }
+
     if (interaction.isButton() && interaction.customId.startsWith("entries-edit:")) {
       const entryId = interaction.customId.split(":")[1];
       const submissions = loadSubmissions();
@@ -1627,20 +1683,25 @@ client.on(Events.InteractionCreate, async (interaction) => {
         content: "Daily check-in recorded and posted to the tracking channel.",
         flags: MessageFlags.Ephemeral,
       });
+      return;
     }
   } catch (error) {
     console.error("Interaction handling failed:", error);
 
     if (interaction.deferred || interaction.replied) {
-      await interaction.followUp({
-        content: "Something went wrong while processing that request.",
-        flags: MessageFlags.Ephemeral,
-      }).catch(() => {});
+      await interaction
+        .followUp({
+          content: "Something went wrong while processing that request.",
+          flags: MessageFlags.Ephemeral,
+        })
+        .catch(() => {});
     } else {
-      await interaction.reply({
-        content: "Something went wrong while processing that request.",
-        flags: MessageFlags.Ephemeral,
-      }).catch(() => {});
+      await interaction
+        .reply({
+          content: "Something went wrong while processing that request.",
+          flags: MessageFlags.Ephemeral,
+        })
+        .catch(() => {});
     }
   }
 });
